@@ -1,0 +1,8 @@
+Options -Indexes
+
+ErrorDocument 403 /403.php
+ErrorDocument 404 /404.php
+
+<FilesMatch "(?i)(^\.|README\.md$|\.(?:sql|ini|log|bak|old|dist)$|~$)">
+    Require all denied
+</FilesMatch>

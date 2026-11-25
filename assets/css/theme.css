@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+
+/*
+ * Brand values sampled from the public DegreeDrishti site stylesheet:
+ * https://www.degreedrishti.com/styles.css
+ */
+:root {
+    --brand-primary: #2C3E50;
+    --brand-secondary: #1a252f;
+    --brand-accent: #FFD700;
+    --brand-accent-soft: #fff5bf;
+    --brand-page: #F5F5F5;
+    --brand-surface: #FFFFFF;
+    --brand-text: #333333;
+    --brand-muted: #666666;
+    --brand-border: #E0E0E0;
+    --brand-success: #398865;
+    --brand-danger: #b63d4a;
+    --brand-focus: var(--brand-accent);
+    --font-body: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-heading: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --button-radius: 8px;
+    --card-radius: 12px;
+    --header-background: rgba(255, 255, 255, 0.97);
+    --header-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    --footer-background: var(--brand-secondary);
+}
