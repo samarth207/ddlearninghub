@@ -193,17 +193,61 @@ foreach ($departmentStats as &$department) {
 unset($department);
 ksort($departmentStats, SORT_NATURAL | SORT_FLAG_CASE);
 
+$overdueSql = "SELECT u.name, u.email, u.emp_code, u.department, u.is_active,
+                      l.title, c.name AS category_name,
+                      DATE_ADD(u.joining_date, INTERVAL l.due_in_days DAY) AS due_date,
+                      DATEDIFF(CURRENT_DATE, DATE_ADD(u.joining_date, INTERVAL l.due_in_days DAY)) AS days_overdue
+               FROM users u
+               CROSS JOIN lessons l
+               INNER JOIN categories c ON c.id = l.category_id
+               LEFT JOIN progress p ON p.user_id = u.id AND p.lesson_id = l.id
+               WHERE u.role = 'employee' AND u.joining_date IS NOT NULL
+                 AND l.is_published = 1 AND l.is_mandatory = 1 AND l.due_in_days IS NOT NULL
+                 AND (p.status IS NULL OR p.status <> 'completed')
+                 AND DATE_ADD(u.joining_date, INTERVAL l.due_in_days DAY) < CURRENT_DATE"
+    . ($categoryId > 0 ? ' AND l.category_id = :category_id' : '')
+    . ' ORDER BY due_date, u.name, l.title';
+$overdueQuery = $connection->prepare($overdueSql);
+$overdueQuery->execute($categoryId > 0 ? ['category_id' => $categoryId] : []);
+$overdueRows = $overdueQuery->fetchAll();
+
 $generatedAt = date('Y-m-d H:i:s');
 $exportValue = $_GET['export'] ?? '';
+$safeCsvText = static function (string $value): string {
+    return preg_match('/\A[\p{C}\p{Z}\s]*[=+\-@]/u', $value) === 1 ? "'" . $value : $value;
+};
+if ($exportValue === 'overdue') {
+    if ($error !== '') {
+        http_response_code(400);
+        exit($error);
+    }
+    $output = fopen('php://output', 'wb');
+    if ($output === false) {
+        throw new RuntimeException('The overdue CSV could not be generated.');
+    }
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="overdue-training-' . date('Y-m-d') . '.csv"');
+    header('Cache-Control: private, no-store');
+    fwrite($output, "\xEF\xBB\xBF");
+    fputcsv($output, ['Employee', 'Email', 'Employee code', 'Department', 'Account', 'Category', 'Lesson', 'Due date', 'Days overdue'], ',', '"', '');
+    foreach ($overdueRows as $row) {
+        fputcsv($output, [
+            $safeCsvText((string) $row['name']), $safeCsvText((string) $row['email']),
+            $safeCsvText((string) $row['emp_code']), $safeCsvText((string) $row['department']),
+            (int) $row['is_active'] === 1 ? 'Active' : 'Inactive',
+            $safeCsvText((string) $row['category_name']), $safeCsvText((string) $row['title']),
+            $safeCsvText((string) $row['due_date']), (int) $row['days_overdue'],
+        ], ',', '"', '');
+    }
+    fclose($output);
+    exit;
+}
 if ($exportValue === 'csv') {
     if ($error !== '') {
         http_response_code(400);
         exit($error);
     }
 
-    $safeCsvText = static function (string $value): string {
-        return preg_match('/\A[\p{C}\p{Z}\s]*[=+\-@]/u', $value) === 1 ? "'" . $value : $value;
-    };
     $output = fopen('php://output', 'wb');
     if ($output === false) {
         throw new RuntimeException('The compliance CSV could not be generated.');
@@ -343,6 +387,32 @@ require __DIR__ . '/../includes/header.php';
     <div class="stat-card"><strong><?= $overallPercent ?>%</strong><span><?= e($categoryName) ?> completion (<?= $overallCompleted ?> / <?= $overallTotal ?>)</span></div>
     <div class="stat-card"><strong><?= $poshLessonCount > 0 ? $pendingPoshCount : '—' ?></strong><span><?= $poshLessonCount > 0 ? 'Employees not complete in POSH' : 'POSH status unavailable' ?></span></div>
 </div>
+
+<section class="admin-list-section" aria-labelledby="overdue-report-title">
+    <div class="section-title-row">
+        <h2 id="overdue-report-title">Overdue mandatory training</h2>
+        <a class="button button-primary" href="<?= e(app_url('/admin/reports.php?export=overdue' . ($categoryId > 0 ? '&category_id=' . $categoryId : ''))) ?>">Export overdue CSV</a>
+    </div>
+    <p class="muted">Includes active and inactive employees with a joining date and incomplete published mandatory lessons whose due date has passed.</p>
+    <?php if ($overdueRows === []): ?>
+        <p class="empty-state">No overdue mandatory training found for this filter.</p>
+    <?php else: ?>
+        <div class="table-wrap"><table>
+            <thead><tr><th>Employee</th><th>Department</th><th>Account</th><th>Category</th><th>Lesson</th><th>Due date</th><th>Days overdue</th></tr></thead>
+            <tbody><?php foreach ($overdueRows as $row): ?>
+                <tr>
+                    <td><?= e((string) $row['name']) ?><span class="table-subtext"><?= e((string) $row['emp_code']) ?> · <?= e((string) $row['email']) ?></span></td>
+                    <td><?= e((string) $row['department']) ?></td>
+                    <td><?= (int) $row['is_active'] === 1 ? 'Active' : 'Inactive' ?></td>
+                    <td><?= e((string) $row['category_name']) ?></td>
+                    <td><?= e((string) $row['title']) ?></td>
+                    <td><?= e((string) $row['due_date']) ?></td>
+                    <td><?= (int) $row['days_overdue'] ?></td>
+                </tr>
+            <?php endforeach; ?></tbody>
+        </table></div>
+    <?php endif; ?>
+</section>
 
 <section class="admin-list-section" aria-labelledby="department-report-title">
     <h2 id="department-report-title">Completion by department</h2>

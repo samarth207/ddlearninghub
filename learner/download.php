@@ -43,4 +43,19 @@ if ($type === 'university') {
     send_private_pdf($record['fee_structure_pdf'], 'university-fee-structure-' . $id . '.pdf');
 }
 
+if ($type === 'policy') {
+    $versionValue = $_GET['version'] ?? '';
+    $version = is_string($versionValue) ? filter_var($versionValue, FILTER_VALIDATE_INT) : false;
+    if ($version === false || $version < 1) {
+        render_error_page(404);
+    }
+    $query = db()->prepare('SELECT file_path FROM policies WHERE id = :id AND version = :version AND is_active = 1');
+    $query->execute(['id' => $id, 'version' => $version]);
+    $record = $query->fetch();
+    if ($record === false || !is_string($record['file_path'] ?? null)) {
+        render_error_page(404);
+    }
+    send_private_pdf($record['file_path'], 'policy-' . $id . '-v' . $version . '.pdf');
+}
+
 render_error_page(404);

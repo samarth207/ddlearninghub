@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/learning_paths.php';
 require_role('admin');
 
 $error = '';
@@ -13,6 +14,7 @@ $form = [
     'email' => '',
     'emp_code' => '',
     'department' => '',
+    'joining_date' => '',
 ];
 $connection = null;
 $readPostString = static function (string $key): string {
@@ -31,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $form['email'] = $readPostString('email');
             $form['emp_code'] = $readPostString('emp_code');
             $form['department'] = $readPostString('department');
+            $form['joining_date'] = $readPostString('joining_date');
 
             if ($form['name'] === '' || strlen($form['name']) > 150) {
                 throw new InvalidArgumentException('Enter an employee name of 150 characters or fewer.');
@@ -44,6 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (strlen($form['department']) > 120) {
                 throw new InvalidArgumentException('Department must be 120 characters or fewer.');
             }
+            if ($form['joining_date'] !== '') {
+                $date = DateTimeImmutable::createFromFormat('!Y-m-d', $form['joining_date']);
+                if ($date === false || $date->format('Y-m-d') !== $form['joining_date'] || (int) $date->format('Y') < 1000) {
+                    throw new InvalidArgumentException('Enter a valid joining date.');
+                }
+            }
 
             $userId = filter_var($form['id'], FILTER_VALIDATE_INT);
             if ($form['id'] !== '' && ($userId === false || $userId < 1)) {
@@ -52,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($userId !== false && $userId > 0) {
                 $save = db()->prepare(
                     "UPDATE users
-                     SET name = :name, email = :email, emp_code = :emp_code, department = :department
+                     SET name = :name, email = :email, emp_code = :emp_code, department = :department, joining_date = :joining_date
                      WHERE id = :id AND role = 'employee'"
                 );
                 $save->execute([
@@ -60,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'email' => $form['email'],
                     'emp_code' => $form['emp_code'],
                     'department' => $form['department'] === '' ? null : $form['department'],
+                    'joining_date' => $form['joining_date'] === '' ? null : $form['joining_date'],
                     'id' => $userId,
                 ]);
                 if ($save->rowCount() === 0) {
@@ -73,9 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $temporaryPassword = bin2hex(random_bytes(12));
-            $insert = db()->prepare(
-                "INSERT INTO users (name, email, emp_code, password_hash, role, department, is_active)
-                 VALUES (:name, :email, :emp_code, :password_hash, 'employee', :department, 1)"
+            $connection = db();
+            $connection->beginTransaction();
+            $insert = $connection->prepare(
+                "INSERT INTO users (name, email, emp_code, password_hash, role, department, joining_date, is_active)
+                 VALUES (:name, :email, :emp_code, :password_hash, 'employee', :department, :joining_date, 1)"
             );
             $insert->execute([
                 'name' => $form['name'],
@@ -83,7 +95,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'emp_code' => $form['emp_code'],
                 'password_hash' => password_hash($temporaryPassword, PASSWORD_DEFAULT),
                 'department' => $form['department'] === '' ? null : $form['department'],
+                'joining_date' => $form['joining_date'] === '' ? null : $form['joining_date'],
             ]);
+            assign_matching_paths($connection, (int) $connection->lastInsertId());
+            $connection->commit();
             $_SESSION['admin_user_flash'] = [
                 'message' => 'Employee added. Share this temporary password securely; it is shown only once and is not emailed.',
                 'credentials' => [[
@@ -213,17 +228,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'password_hash' => password_hash($temporaryPassword, PASSWORD_DEFAULT),
                             'department' => $values['department'] === '' ? null : $values['department'],
                         ]);
-                        $credentials[] = [
-                            'name' => $values['name'],
-                            'email' => $values['email'],
-                            'temporary_password' => $temporaryPassword,
-                        ];
                     } catch (PDOException $exception) {
                         if (pdo_sql_state($exception) !== '23000') {
                             throw $exception;
                         }
                         $issues[] = 'Row ' . $lineNumber . ': email or employee code already exists.';
+                        continue;
                     }
+                    assign_matching_paths($connection, (int) $connection->lastInsertId());
+                    $credentials[] = [
+                        'name' => $values['name'],
+                        'email' => $values['email'],
+                        'temporary_password' => $temporaryPassword,
+                    ];
                 }
                 $connection->commit();
             } catch (Throwable $exception) {
@@ -276,7 +293,7 @@ $editId = is_string($editValue) ? filter_var($editValue, FILTER_VALIDATE_INT) : 
 $editing = $editId !== false && $editId !== null && $editId > 0;
 if ($editing) {
     $editQuery = db()->prepare(
-        "SELECT id, name, email, emp_code, department
+        "SELECT id, name, email, emp_code, department, joining_date
          FROM users WHERE id = :id AND role = 'employee'"
     );
     $editQuery->execute(['id' => $editId]);
@@ -327,6 +344,7 @@ require __DIR__ . '/../includes/header.php';
         <label>Email<input type="email" name="email" required maxlength="254" value="<?= e((string) $form['email']) ?>"></label>
         <label>Employee code<input name="emp_code" required maxlength="50" value="<?= e((string) $form['emp_code']) ?>"></label>
         <label>Department<input name="department" maxlength="120" value="<?= e((string) $form['department']) ?>"></label>
+        <label>Joining date<input type="date" name="joining_date" value="<?= e((string) $form['joining_date']) ?>"></label>
         <div class="admin-form-actions form-field-wide">
             <button class="button button-primary" type="submit"><?= $editing ? 'Save employee' : 'Add employee' ?></button>
             <?php if ($editing): ?><a class="button button-secondary" href="<?= e(app_url('/admin/users.php')) ?>">Cancel</a><?php endif; ?>

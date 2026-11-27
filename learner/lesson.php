@@ -25,9 +25,25 @@ if ($lesson === false) {
 }
 
 $error = '';
+$quizQuery = db()->prepare('SELECT id FROM quizzes WHERE lesson_id = :lesson_id');
+$quizQuery->execute(['lesson_id' => $lessonId]);
+$quizId = $quizQuery->fetchColumn();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         verify_csrf_token($_POST['csrf_token'] ?? null);
+        $connection = db();
+        $connection->beginTransaction();
+        $lock = $connection->prepare('SELECT id FROM lessons WHERE id = :id AND is_published = 1 FOR UPDATE');
+        $lock->execute(['id' => $lessonId]);
+        if ($lock->fetchColumn() === false) {
+            $connection->rollBack();
+            render_error_page(404);
+        }
+        $quizQuery->execute(['lesson_id' => $lessonId]);
+        if ($quizQuery->fetchColumn() !== false) {
+            $connection->rollBack();
+            redirect_to('/learner/quiz.php?lesson_id=' . (int) $lessonId);
+        }
         $complete = db()->prepare(
             "INSERT INTO progress (user_id, lesson_id, status, completed_at)
              VALUES (:user_id, :lesson_id, 'completed', CURRENT_TIMESTAMP)
@@ -35,8 +51,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  completed_at = COALESCE(completed_at, CURRENT_TIMESTAMP)"
         );
         $complete->execute(['user_id' => $user['id'], 'lesson_id' => $lesson['id']]);
+        $connection->commit();
         redirect_to('/learner/lesson.php?id=' . (int) $lesson['id']);
+    } catch (PDOException $exception) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        error_log('Lesson completion failed: ' . $exception->getMessage());
+        http_response_code(500);
+        $error = 'Lesson completion could not be saved. Please try again.';
     } catch (RuntimeException $exception) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
         http_response_code(400);
         $error = 'Your form session expired. Reload the page and try again.';
     }
@@ -110,6 +137,9 @@ $progress = $progressQuery->fetch();
 $attachmentsQuery = db()->prepare('SELECT id, title FROM attachments WHERE lesson_id = :lesson_id ORDER BY id');
 $attachmentsQuery->execute(['lesson_id' => $lesson['id']]);
 $attachments = $attachmentsQuery->fetchAll();
+$certificateQuery = db()->prepare('SELECT id FROM certificates WHERE user_id = ? AND lesson_id = ?');
+$certificateQuery->execute([$user['id'], $lessonId]);
+$certificateId = $certificateQuery->fetchColumn();
 $pageTitle = $lesson['title'];
 $activeNav = 'dashboard';
 require __DIR__ . '/../includes/header.php';
@@ -140,6 +170,13 @@ require __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 <?php if ($progress !== false && $progress['status'] === 'completed'): ?>
     <p class="lesson-complete-message" role="status"><span aria-hidden="true">✓</span> You’ve completed this lesson.</p>
+    <?php if ($certificateId !== false): ?>
+        <p><a class="button button-primary" href="<?= e(app_url('/learner/certificate.php?id=' . (int) $certificateId)) ?>">Download certificate</a></p>
+    <?php elseif ($quizId !== false): ?>
+        <p><a class="button button-primary" href="<?= e(app_url('/learner/quiz.php?lesson_id=' . (int) $lessonId)) ?>">Take quiz</a></p>
+    <?php endif; ?>
+<?php elseif ($quizId !== false): ?>
+    <p class="lesson-complete-form"><a class="button button-primary" href="<?= e(app_url('/learner/quiz.php?lesson_id=' . (int) $lessonId)) ?>">Take quiz</a></p>
 <?php else: ?>
     <form method="post" class="lesson-complete-form">
         <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

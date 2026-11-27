@@ -14,6 +14,7 @@ $form = [
     'description' => '',
     'video_url' => '',
     'duration_min' => '0',
+    'due_in_days' => '',
     'is_mandatory' => '0',
     'is_published' => '0',
 ];
@@ -46,6 +47,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $oldFiles = $attachmentQuery->fetchAll(PDO::FETCH_COLUMN);
 
             $connection->beginTransaction();
+            $lock = $connection->prepare('SELECT id FROM lessons WHERE id = :id FOR UPDATE');
+            $lock->execute(['id' => $lessonId]);
+            if ($lock->fetchColumn() === false) {
+                throw new InvalidArgumentException('That lesson could not be found.');
+            }
+            $history = $connection->prepare(
+                'SELECT EXISTS(SELECT 1 FROM quiz_attempts a INNER JOIN quizzes q ON q.id = a.quiz_id
+                               WHERE q.lesson_id = :attempt_lesson_id)
+                      OR EXISTS(SELECT 1 FROM certificates WHERE lesson_id = :certificate_lesson_id)'
+            );
+            $history->execute(['attempt_lesson_id' => $lessonId, 'certificate_lesson_id' => $lessonId]);
+            if ((int) $history->fetchColumn() === 1) {
+                throw new InvalidArgumentException('This lesson cannot be deleted because it has quiz attempts or certificates.');
+            }
             $delete = $connection->prepare('DELETE FROM lessons WHERE id = :id');
             $delete->execute(['id' => $lessonId]);
             if ($delete->rowCount() === 0) {
@@ -81,11 +96,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $form['description'] = $readPostString('description');
         $form['video_url'] = $readPostString('video_url');
         $form['duration_min'] = $readPostString('duration_min');
+        $form['due_in_days'] = $readPostString('due_in_days');
         $form['is_mandatory'] = $readPostString('is_mandatory');
         $form['is_published'] = $readPostString('is_published');
 
         $categoryId = filter_var($form['category_id'], FILTER_VALIDATE_INT);
         $duration = filter_var($form['duration_min'], FILTER_VALIDATE_INT);
+        $dueDays = $form['due_in_days'] === '' ? null : filter_var($form['due_in_days'], FILTER_VALIDATE_INT);
         if ($categoryId === false || $categoryId < 1) {
             throw new InvalidArgumentException('Choose a lesson category.');
         }
@@ -94,6 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if ($duration === false || $duration < 0 || $duration > 65535) {
             throw new InvalidArgumentException('Duration must be a whole number between 0 and 65535 minutes.');
+        }
+        if ($dueDays !== null && ($dueDays === false || $dueDays < 0 || $dueDays > 36500)) {
+            throw new InvalidArgumentException('Due days must be a whole number between 0 and 36500.');
         }
         if (!in_array($form['is_mandatory'], ['0', '1'], true)
             || !in_array($form['is_published'], ['0', '1'], true)) {
@@ -131,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'UPDATE lessons
                  SET category_id = :category_id, title = :title, description = :description,
                      video_type = :video_type, video_url = :video_url, duration_min = :duration_min,
-                     is_mandatory = :is_mandatory, is_published = :is_published
+                     is_mandatory = :is_mandatory, is_published = :is_published, due_in_days = :due_in_days
                  WHERE id = :id'
             );
             $save->execute([
@@ -141,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'video_type' => $video['video_type'],
                 'video_url' => $video['video_url'],
                 'duration_min' => $duration,
+                'due_in_days' => $dueDays,
                 'is_mandatory' => (int) $form['is_mandatory'],
                 'is_published' => (int) $form['is_published'],
                 'id' => $lessonId,
@@ -156,10 +177,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $save = $connection->prepare(
                 'INSERT INTO lessons
                     (category_id, title, description, video_type, video_url,
-                     duration_min, is_mandatory, is_published, sort_order)
+                     duration_min, is_mandatory, is_published, sort_order, due_in_days)
                  VALUES
                     (:category_id, :title, :description, :video_type, :video_url,
-                     :duration_min, :is_mandatory, :is_published, :sort_order)'
+                     :duration_min, :is_mandatory, :is_published, :sort_order, :due_in_days)'
             );
             $save->execute([
                 'category_id' => $categoryId,
@@ -168,6 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'video_type' => $video['video_type'],
                 'video_url' => $video['video_url'],
                 'duration_min' => $duration,
+                'due_in_days' => $dueDays,
                 'is_mandatory' => (int) $form['is_mandatory'],
                 'is_published' => (int) $form['is_published'],
                 'sort_order' => $nextSortOrder,
@@ -256,7 +278,7 @@ $editing = $editId !== false && $editId !== null && $editId > 0;
 if ($editing) {
     $editQuery = db()->prepare(
         'SELECT id, category_id, title, description, video_url, duration_min,
-                is_mandatory, is_published
+                is_mandatory, is_published, due_in_days
          FROM lessons WHERE id = :id'
     );
     $editQuery->execute(['id' => $editId]);
@@ -322,6 +344,7 @@ require __DIR__ . '/../includes/header.php';
                 <small class="form-help" id="video-link-feedback">Paste a YouTube or Google Drive link. It will be validated and converted when saved.</small>
             </label>
             <label>Duration (minutes)<input name="duration_min" type="number" min="0" max="65535" step="1" required value="<?= e((string) $form['duration_min']) ?>"></label>
+            <label>Due in days after joining<input name="due_in_days" type="number" min="0" max="36500" step="1" value="<?= e((string) $form['due_in_days']) ?>"><small class="form-help">Leave blank for no due date.</small></label>
             <label>Mandatory?
                 <select name="is_mandatory"><option value="0" <?= (string) $form['is_mandatory'] === '0' ? 'selected' : '' ?>>No</option><option value="1" <?= (string) $form['is_mandatory'] === '1' ? 'selected' : '' ?>>Yes</option></select>
             </label>
@@ -350,6 +373,10 @@ require __DIR__ . '/../includes/header.php';
         </form>
     <?php endif; ?>
 </section>
+
+<?php if ($editing): ?>
+    <?php $embeddedQuiz = true; require __DIR__ . '/quiz.php'; ?>
+<?php endif; ?>
 
 <section class="admin-list-section">
     <h2>All lessons</h2>

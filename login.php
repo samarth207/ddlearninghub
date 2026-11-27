@@ -57,21 +57,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body class="login-page">
-    <main class="login-card">
-        <a class="brand login-brand" href="index.php"><span class="brand-mark">D</span><span>DegreeDrishti<small>LEARNING HUB</small></span></a>
-        <p class="eyebrow">WELCOME BACK</p>
-        <h1>Sign in to learn</h1>
-        <p class="muted">Use your company account to access team training.</p>
-        <?php if ($error !== ''): ?>
-            <p class="notice notice-error" role="alert"><?= e($error) ?></p>
-        <?php endif; ?>
-        <form method="post" action="login.php" class="stack-form">
-            <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-            <label>Email address<input type="email" name="email" autocomplete="username" required maxlength="254" value="<?= e((string) ($_POST['email'] ?? '')) ?>"></label>
-            <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
-            <button class="button button-primary" type="submit">Sign in</button>
-        </form>
-        <p class="login-help">Need access? Contact your DegreeDrishti administrator.</p>
-    </main>
+    <div class="login-layout">
+        <aside class="login-intro" aria-label="About the Learning Hub">
+            <div>
+                <p class="login-intro-label">DEGREEDRISHTI LEARNING HUB</p>
+                <h2>Grow with every new skill.</h2>
+                <p>Training, resources and tools to support your journey at DegreeDrishti.</p>
+            </div>
+            <div class="login-highlights" aria-label="Learning Hub resources">
+                <span>Training</span><span>Resources</span><span>Progress</span>
+            </div>
+        </aside>
+        <main class="login-card">
+            <a class="brand login-brand" href="index.php"><span class="brand-mark" aria-hidden="true">D</span><span>DegreeDrishti<small>LEARNING HUB</small></span></a>
+            <p class="eyebrow">WELCOME BACK</p>
+            <h1>Sign in to learn</h1>
+            <p class="muted">Use your company account to access team training.</p>
+            <?php if ($error !== ''): ?>
+                <p class="notice notice-error" role="alert"><?= e($error) ?></p>
+            <?php endif; ?>
+            <form method="post" action="login.php" class="stack-form">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <label>Email address<input type="email" name="email" autocomplete="username" required maxlength="254" value="<?= e((string) ($_POST['email'] ?? '')) ?>"></label>
+                <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+                <button class="button button-primary" type="submit">Sign in</button>
+            </form>
+            <p class="login-help">Need access? Contact your DegreeDrishti administrator.</p>
+        </main>
+    </div>
 </body>
 </html>

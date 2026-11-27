@@ -7,6 +7,38 @@ $pageTitle = isset($pageTitle) && is_string($pageTitle) ? $pageTitle : 'Learning
 $activeNav = isset($activeNav) && is_string($activeNav) ? $activeNav : '';
 $signedInUser = current_user();
 $isAdminArea = $signedInUser !== null && $signedInUser['role'] === 'admin';
+$headerNavGroups = $isAdminArea ? [
+    'Training' => [
+        ['Categories', '/admin/categories.php', 'categories'],
+        ['Lessons', '/admin/lessons.php', 'lessons'],
+        ['Learning paths', '/admin/paths.php', 'paths'],
+    ],
+    'Resources' => [
+        ['Universities', '/admin/universities.php', 'universities'],
+        ['Fee rows', '/admin/university-fees.php', 'fees'],
+        ['Policies', '/admin/policies.php', 'policies'],
+        ['Scripts & templates', '/admin/templates.php', 'templates'],
+    ],
+    'People' => [
+        ['Users', '/admin/users.php', 'users'],
+        ['Onboarding, contacts & holidays', '/admin/onboarding.php', 'onboarding'],
+    ],
+    'Reports & backups' => [
+        ['Reports', '/admin/reports.php', 'reports'],
+        ['Backups', '/admin/backup.php', 'backup'],
+    ],
+] : [
+    'Learning' => [
+        ['Search training', '/learner/search.php', 'search'],
+        ['University fees', '/learner/university-fees.php', 'fees'],
+        ['Scripts & FAQ', '/learner/library.php', 'library'],
+    ],
+    'Onboarding' => [
+        ['Policies', '/learner/policies.php', 'policies'],
+        ['Checklist', '/learner/checklist.php', 'checklist'],
+        ['Contacts & holidays', '/learner/contacts.php', 'contacts'],
+    ],
+];
 ?>
 <!doctype html>
 <html lang="en">
@@ -27,19 +59,18 @@ $isAdminArea = $signedInUser !== null && $signedInUser['role'] === 'admin';
     </a>
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">Menu</button>
     <nav class="site-nav" id="site-nav" aria-label="Main navigation">
-        <?php if ($isAdminArea): ?>
-            <a class="<?= $activeNav === 'dashboard' ? 'active' : '' ?>" href="<?= e(app_url('/admin/index.php')) ?>">Overview</a>
-            <a class="<?= $activeNav === 'categories' ? 'active' : '' ?>" href="<?= e(app_url('/admin/categories.php')) ?>">Categories</a>
-            <a class="<?= $activeNav === 'lessons' ? 'active' : '' ?>" href="<?= e(app_url('/admin/lessons.php')) ?>">Lessons</a>
-            <a class="<?= $activeNav === 'users' ? 'active' : '' ?>" href="<?= e(app_url('/admin/users.php')) ?>">Users</a>
-            <a class="<?= $activeNav === 'universities' ? 'active' : '' ?>" href="<?= e(app_url('/admin/universities.php')) ?>">Universities</a>
-            <a class="<?= $activeNav === 'fees' ? 'active' : '' ?>" href="<?= e(app_url('/admin/university-fees.php')) ?>">Fee rows</a>
-            <a class="<?= $activeNav === 'reports' ? 'active' : '' ?>" href="<?= e(app_url('/admin/reports.php')) ?>">Reports</a>
-        <?php else: ?>
-            <a class="<?= $activeNav === 'dashboard' ? 'active' : '' ?>" href="<?= e(app_url('/learner/dashboard.php')) ?>">Home</a>
-            <a class="<?= $activeNav === 'search' ? 'active' : '' ?>" href="<?= e(app_url('/learner/search.php')) ?>">Search training</a>
-            <a class="<?= $activeNav === 'fees' ? 'active' : '' ?>" href="<?= e(app_url('/learner/university-fees.php')) ?>">University fees</a>
-        <?php endif; ?>
+        <a class="<?= $activeNav === 'dashboard' ? 'active' : '' ?>" <?= $activeNav === 'dashboard' ? 'aria-current="page"' : '' ?> href="<?= e(app_url($isAdminArea ? '/admin/index.php' : '/learner/dashboard.php')) ?>"><?= $isAdminArea ? 'Overview' : 'Home' ?></a>
+        <?php foreach ($headerNavGroups as $headerGroupName => $headerLinks): ?>
+            <?php $headerGroupActive = in_array($activeNav, array_column($headerLinks, 2), true); ?>
+            <details class="nav-group<?= $headerGroupActive ? ' active' : '' ?>">
+                <summary><?= e($headerGroupName) ?></summary>
+                <div class="nav-group-links">
+                    <?php foreach ($headerLinks as [$headerLabel, $headerPath, $headerKey]): ?>
+                        <a class="<?= $activeNav === $headerKey ? 'active' : '' ?>" <?= $activeNav === $headerKey ? 'aria-current="page"' : '' ?> href="<?= e(app_url($headerPath)) ?>"><?= e($headerLabel) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+        <?php endforeach; ?>
         <span class="nav-user"><?= e((string) $signedInUser['name']) ?></span>
         <form class="logout-form" action="<?= e(app_url('/logout.php')) ?>" method="post">
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">

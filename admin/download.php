@@ -38,4 +38,14 @@ if ($type === 'university') {
     send_private_pdf($record['fee_structure_pdf'], 'university-fee-structure-' . $id . '.pdf');
 }
 
+if ($type === 'policy') {
+    $query = db()->prepare('SELECT file_path FROM policies WHERE id = :id');
+    $query->execute(['id' => $id]);
+    $record = $query->fetch();
+    if ($record === false || !is_string($record['file_path'] ?? null)) {
+        render_error_page(404);
+    }
+    send_private_pdf($record['file_path'], 'policy-' . $id . '.pdf');
+}
+
 render_error_page(404);

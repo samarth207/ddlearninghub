@@ -4,10 +4,36 @@ const menuToggle = document.querySelector(".menu-toggle");
 const siteNav = document.querySelector("#site-nav");
 
 if (menuToggle && siteNav) {
+    const groups = siteNav.querySelectorAll(".nav-group");
     menuToggle.addEventListener("click", () => {
         const isOpen = menuToggle.getAttribute("aria-expanded") === "true";
         menuToggle.setAttribute("aria-expanded", String(!isOpen));
         siteNav.classList.toggle("is-open", !isOpen);
+        if (isOpen) groups.forEach((group) => { group.open = false; });
+    });
+    groups.forEach((group) => {
+        group.addEventListener("toggle", () => {
+            if (group.open) groups.forEach((other) => { if (other !== group) other.open = false; });
+        });
+    });
+    document.addEventListener("click", (event) => {
+        if (!siteNav.contains(event.target) && !menuToggle.contains(event.target)) {
+            groups.forEach((group) => { group.open = false; });
+            siteNav.classList.remove("is-open");
+            menuToggle.setAttribute("aria-expanded", "false");
+        }
+    });
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const openGroup = siteNav.querySelector(".nav-group[open]");
+        if (openGroup) {
+            openGroup.open = false;
+            openGroup.querySelector("summary").focus();
+        } else if (siteNav.classList.contains("is-open")) {
+            siteNav.classList.remove("is-open");
+            menuToggle.setAttribute("aria-expanded", "false");
+            menuToggle.focus();
+        }
     });
 }
 
